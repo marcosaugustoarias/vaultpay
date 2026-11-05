@@ -8,7 +8,7 @@ COPY . .
 RUN npm run lint:security && npm run build
 
 # ---- runtime: static files only, non-root nginx ----------------------------------
-FROM nginxinc/nginx-unprivileged:1.27-alpine
+FROM nginxinc/nginx-unprivileged:1.31-alpine
 COPY nginx/default.conf /etc/nginx/conf.d/default.conf
 COPY nginx/security-headers.conf /etc/nginx/conf.d/security-headers.inc
 COPY --from=build /app/dist /usr/share/nginx/html
