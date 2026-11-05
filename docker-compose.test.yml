@@ -1,0 +1,76 @@
+# Full backend quality gate in containers (no local Python needed), including the
+# PostgreSQL integration tests that are skipped on SQLite:
+#
+#   docker compose -f docker-compose.test.yml run --rm backend-tests
+#   docker compose -f docker-compose.test.yml down -v
+#
+# Same steps as CI: ruff -> bandit -> pytest with coverage (SQLite + real PostgreSQL).
+name: vaultpay-test
+
+services:
+  test-db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: vaultpay_test
+      POSTGRES_USER: vaultpay
+      POSTGRES_PASSWORD: test-only-password  # throwaway container, never exposed
+    tmpfs: [/var/lib/postgresql/data]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U vaultpay -d vaultpay_test"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+
+  backend-tests:
+    image: python:3.13-slim
+    depends_on:
+      test-db: { condition: service_healthy }
+    environment:
+      VAULTPAY_TEST_POSTGRES_URL: postgresql+psycopg://vaultpay:test-only-password@test-db:5432/vaultpay_test
+      PIP_ROOT_USER_ACTION: ignore
+      PIP_DISABLE_PIP_VERSION_CHECK: "1"
+    volumes:
+      - ./backend:/src:ro
+      - pipcache:/root/.cache/pip
+    command: >
+      sh -c "cp -r /src /app && cd /app
+      && pip install -q -r requirements-dev.txt
+      && ruff check .
+      && bandit -q -r app -c pyproject.toml
+      && pytest --cov --cov-report=term-missing:skip-covered"
+
+  # docker compose -f docker-compose.test.yml run --rm frontend-tests
+  frontend-tests:
+    image: node:22-slim
+    volumes:
+      - ./frontend:/src:ro
+      - npmcache:/root/.npm
+    command: >
+      sh -c "mkdir /app && cd /src && tar --exclude=node_modules --exclude=dist -cf - . | tar -xf - -C /app && cd /app
+      && npm ci --no-fund --no-audit
+      && npm run lint:security
+      && npm run typecheck
+      && npm test
+      && npm run build"
+
+  # Functional E2E in a real browser against the RUNNING app stack (docker compose up first).
+  # It joins the frontend container's network namespace, so http://localhost:8080 inside
+  # this container is nginx itself (same Host header the API allows).
+  #   docker compose -f docker-compose.test.yml --profile e2e run --rm e2e
+  e2e:
+    profiles: ["e2e"]
+    image: mcr.microsoft.com/playwright:v1.55.0-noble
+    network_mode: "container:vaultpay-frontend-1"
+    working_dir: /e2e
+    environment:
+      CI: "1"
+    volumes:
+      - ./e2e:/e2e
+      - e2e_node_modules:/e2e/node_modules
+      - npmcache:/root/.npm
+    command: sh -c "npm install --no-fund --no-audit && npx playwright test"
+
+volumes:
+  pipcache: {}
+  npmcache: {}
+  e2e_node_modules: {}

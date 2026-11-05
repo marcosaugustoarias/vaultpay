@@ -9,4 +9,5 @@ regexes = [
   '''dev-only-jwt-secret-do-not-use-in-production-0123456789''',
   '''dev-only-32-byte-key-for-aes-256''',
   '''ci-only-password''',
+  '''test-only-password''',
 ]
