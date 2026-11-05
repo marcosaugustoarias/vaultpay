@@ -60,7 +60,7 @@ Referencias: **ASVS** = OWASP ASVS 4.0.3 · **API** = OWASP API Security Top 10 
 
 | ID | Control | Amenaza mitigada | Referencia | Implementación | Evidencia |
 |---|---|---|---|---|---|
-| SEC-RISK-01 | Motor de reglas: límite por operación, **límite diario**, **velocidad** (transferencias/hora), umbral de step-up | Fraude, cuenta comprometida | API6 | `services/risk.py` | `test_per_transfer_limit`, `test_daily_limit`, `test_velocity_limit` |
+| SEC-RISK-01 | Motor de reglas: límite por operación, **límite diario**, **velocidad** (transferencias/hora), umbral de step-up | Fraude, cuenta comprometida | API6 | Política pura `domain/ledger/risk_policy.py`; hechos (SQL) en `services/risk.py` | Unitarios `tests/unit/test_transfer_rules.py`; funcionales `test_per_transfer_limit`, `test_daily_limit`, `test_velocity_limit` |
 | SEC-CFG-01 | **Fail-fast**: en producción la app no arranca con secretos por defecto, cookies inseguras, CORS `*`, docs públicas, SQLite o fondeo demo | Despliegue mal configurado | ASVS 14.1, API8 | `config.py` | `test_insecure_production_config_refuses_to_start` (10 casos), `test_docs_disabled_when_configured` |
 | SEC-FE-01 | Access token **solo en memoria** (nunca Web Storage); refresh en cookie HttpOnly | XSS exfiltrando tokens | ASVS 3.2.3 | `frontend/src/lib/api.ts` | `api.test.ts › never persists tokens in Web Storage`, E2E |
 | SEC-FE-02 | **CSP estricta** sin `unsafe-inline`/`eval`; prohibición automática de `innerHTML`/`eval`/Web Storage en el código | XSS | ASVS 5.3, 14.4.3 | `frontend/nginx/*.conf`, `frontend/scripts/check-security.mjs` | `npm run lint:security`, E2E (0 violaciones CSP, payload `<script>` renderizado como texto) |

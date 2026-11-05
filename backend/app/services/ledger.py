@@ -11,6 +11,10 @@ SEC-DATA-05  Idempotency: a retried request (network flake, double click) return
              different payload is rejected.
 SEC-AUTHZ-01 The source account must belong to the caller (404 otherwise: we do not
              reveal whether someone else's account id exists).
+
+DDD role: this is the *application service* of the Ledger context. It orchestrates
+repositories (SQLAlchemy), the domain model (``app.domain.ledger``), MFA and audit in
+one unit of work. Business rules themselves live in the domain package.
 """
 
 from __future__ import annotations
@@ -23,6 +27,9 @@ from sqlalchemy import select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
+from app.domain.errors import BusinessRuleViolation
+from app.domain.ledger import AccountNumber, Money, check_transfer
+from app.domain.ledger.account_number import mask
 from app.models import Account, LedgerEntry, Transaction, User
 from app.services import audit, risk
 from app.services.errors import DomainError
@@ -30,31 +37,17 @@ from app.services.mfa import check_totp, is_locked
 
 TREASURY_EMAIL = "treasury@vaultpay.internal"
 
+__all__ = ["generate_account_number", "luhn_valid", "mask", "open_account", "transfer", "demo_fund"]
+
 
 # ------------------------------------------------------------- account numbers
-def _luhn_check_digit(payload: str) -> str:
-    total = 0
-    for i, ch in enumerate(reversed(payload)):
-        d = int(ch)
-        if i % 2 == 0:
-            d *= 2
-            if d > 9:
-                d -= 9
-        total += d
-    return str((10 - total % 10) % 10)
-
-
+# Thin wrappers kept for callers that predate the domain layer (routers, tests).
 def generate_account_number() -> str:
-    payload = "".join(str(secrets.randbelow(10)) for _ in range(11))
-    return payload + _luhn_check_digit(payload)
+    return AccountNumber.generate().value
 
 
 def luhn_valid(number: str) -> bool:
-    return len(number) == 12 and number.isdigit() and _luhn_check_digit(number[:-1]) == number[-1]
-
-
-def mask(account_number: str) -> str:
-    return "••••" + account_number[-4:]
+    return AccountNumber.is_valid(number)
 
 
 def open_account(db: Session, user: User, *, system: bool = False) -> Account:
@@ -232,21 +225,19 @@ def transfer(
         if source is None:
             raise DomainError(404, "account_not_found", "Account not found.")
 
-        if not luhn_valid(to_account_number):
-            raise DomainError(422, "invalid_account_number", "Invalid destination account number.")
+        # Domain rules: typo-safe account number (before any lookup), then the transfer spec.
+        dest_number = AccountNumber(to_account_number)
+        amount = Money.positive(amount_cents, source.currency)
         dest = db.execute(
             select(Account).where(
-                Account.account_number == to_account_number, Account.is_system.is_(False)
+                Account.account_number == dest_number.value, Account.is_system.is_(False)
             )
         ).scalar_one_or_none()
         if dest is None:
             raise DomainError(404, "destination_not_found", "Destination account not found.")
-        if dest.id == source.id:
-            raise DomainError(422, "same_account", "Source and destination must differ.")
-        if dest.currency != source.currency:
-            raise DomainError(422, "currency_mismatch", "Currency mismatch.")
+        check_transfer(source, dest, amount)
 
-        decision = risk.evaluate(db, source, user.id, amount_cents)
+        decision = risk.evaluate(db, source, user.id, amount.cents)
         if decision is risk.Decision.STEP_UP:
             # SEC-AUTH-09: high-value transfers need a *fresh* second factor.
             if not user.mfa_enabled:
@@ -282,6 +273,9 @@ def transfer(
         db.commit()
         return tx, source, dest
 
+    except BusinessRuleViolation as violation:
+        _fail(db, DomainError.from_violation(violation), action="transfer.denied", user=user, ip=ip, details=audit_ctx)
+        raise  # pragma: no cover - _fail always raises
     except DomainError as err:
         _fail(db, err, action="transfer.denied", user=user, ip=ip, details=audit_ctx)
         raise  # pragma: no cover - _fail always raises

@@ -34,14 +34,16 @@ backend/app
 ├── main.py            # composición: middlewares (orden explícito), routers, lifespan
 ├── config.py          # settings 12-factor + guardarraíles de producción (SEC-CFG-01)
 ├── routers/           # capa HTTP fina: validación (schemas), deps de auth, mapeo de errores
-├── services/          # casos de uso / dominio: auth, ledger, risk, mfa, audit (sin HTTP)
+├── services/          # capa de aplicación: auth, ledger, risk, mfa, audit (sin HTTP)
+├── domain/ledger/     # dominio puro (DDD): Money, AccountNumber, check_transfer, assess_risk
 ├── security/          # primitivas: passwords, tokens, totp, crypto, rate_limit, middleware
 ├── models.py          # ORM + CHECK constraints + guardias append-only
 └── database.py        # engine, sesiones, triggers de inmutabilidad (SQLite / PostgreSQL)
 ```
 
-Los **servicios no conocen HTTP**: lanzan `DomainError(status, code, message)` y los routers lo
-traducen. Esto permite testear reglas de negocio directamente (p. ej. los tests de concurrencia
+El **dominio no conoce HTTP ni la base de datos**: lanza `BusinessRuleViolation(code, message)`
+y la capa de aplicación la convierte en `DomainError(status, code, message)`, que los routers
+traducen a HTTP. Detalle y razonamiento en [`DDD.md`](DDD.md). Esto permite testear reglas de negocio directamente (p. ej. los tests de concurrencia
 llaman a `ledger.transfer` desde varios hilos) y mantiene códigos de error estables para el cliente.
 
 ## Flujos críticos
