@@ -1,13 +1,13 @@
 # SEC-INF-01: multi-stage build, no build tools in the runtime image, non-root user.
 # ---- deps: build wheels in a throw-away stage ----------------------------------
-FROM python:3.13-slim AS deps
+FROM python:3.15-slim AS deps
 ENV PIP_NO_CACHE_DIR=1 PIP_DISABLE_PIP_VERSION_CHECK=1
 WORKDIR /w
 COPY requirements.txt .
 RUN pip wheel --wheel-dir /wheels -r requirements.txt
 
 # ---- runtime ---------------------------------------------------------------------
-FROM python:3.13-slim
+FROM python:3.15-slim
 ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1 PIP_NO_CACHE_DIR=1
 RUN groupadd --system app && useradd --system --gid app --home /app --shell /usr/sbin/nologin app
 WORKDIR /app
