@@ -1,0 +1,32 @@
+[project]
+name = "vaultpay-api"
+version = "1.0.0"
+requires-python = ">=3.12"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = ""
+filterwarnings = ["ignore::DeprecationWarning:starlette"]
+
+[tool.coverage.run]
+source = ["app"]
+omit = ["app/cli.py"]
+
+[tool.coverage.report]
+fail_under = 90
+show_missing = true
+
+[tool.ruff]
+line-length = 120
+target-version = "py312"
+
+[tool.ruff.lint]
+# S = flake8-bandit, B = bugbear, UP = pyupgrade, SIM, I = isort
+select = ["E", "F", "W", "I", "B", "UP", "S", "SIM"]
+ignore = ["B008"]  # FastAPI's Depends()/Query() in defaults is idiomatic
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = ["S101", "S105", "S106", "S608", "E501", "B017"]
+
+[tool.bandit]
+exclude_dirs = ["tests"]

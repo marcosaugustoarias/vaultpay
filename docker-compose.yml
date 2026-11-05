@@ -1,0 +1,68 @@
+# Local, production-like stack:  cp .env.example .env && ./scripts/gen-secrets.sh >> .env
+# then:  docker compose up --build   ->  http://localhost:8080
+#
+# SEC-INF-01 hardening shown here: no default secrets (compose refuses to start without them),
+# read-only root filesystems, all Linux capabilities dropped, no-new-privileges,
+# non-root users, private network, DB not published to the host.
+name: vaultpay
+
+x-hardening: &hardening
+  read_only: true
+  cap_drop: [ALL]
+  security_opt: ["no-new-privileges:true"]
+  restart: unless-stopped
+
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: vaultpay
+      POSTGRES_USER: vaultpay
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+    volumes: [dbdata:/var/lib/postgresql/data]
+    tmpfs: [/var/run/postgresql, /tmp]
+    read_only: true
+    security_opt: ["no-new-privileges:true"]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U vaultpay -d vaultpay"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    networks: [internal]
+    restart: unless-stopped
+
+  backend:
+    <<: *hardening
+    build: ./backend
+    depends_on:
+      db: { condition: service_healthy }
+    tmpfs: [/tmp]
+    environment:
+      # "development" because this local stack is plain HTTP. With TLS in front,
+      # set VAULTPAY_ENV=production: the app then refuses to boot with unsafe settings.
+      VAULTPAY_ENV: ${VAULTPAY_ENV:-development}
+      VAULTPAY_DATABASE_URL: postgresql+psycopg://vaultpay:${POSTGRES_PASSWORD}@db:5432/vaultpay
+      VAULTPAY_JWT_SECRET: ${VAULTPAY_JWT_SECRET:?set VAULTPAY_JWT_SECRET in .env}
+      VAULTPAY_ENCRYPTION_KEY: ${VAULTPAY_ENCRYPTION_KEY:?set VAULTPAY_ENCRYPTION_KEY in .env}
+      VAULTPAY_CORS_ORIGINS: '["http://localhost:8080"]'
+      VAULTPAY_ALLOWED_HOSTS: '["localhost","127.0.0.1"]'
+      VAULTPAY_TRUSTED_PROXY_COUNT: "1"
+      VAULTPAY_COOKIE_SECURE: ${VAULTPAY_COOKIE_SECURE:-false}
+      VAULTPAY_DOCS_ENABLED: "false"
+      VAULTPAY_DEMO_FUNDING_ENABLED: ${VAULTPAY_DEMO_FUNDING_ENABLED:-true}
+    networks: [internal]
+
+  frontend:
+    <<: *hardening
+    build: ./frontend
+    depends_on: [backend]
+    tmpfs: [/tmp, /var/cache/nginx]
+    ports: ["127.0.0.1:8080:8080"]  # loopback only
+    networks: [internal, public]
+
+networks:
+  internal: { internal: true }  # db + backend have no route to the internet
+  public: {}
+
+volumes:
+  dbdata: {}

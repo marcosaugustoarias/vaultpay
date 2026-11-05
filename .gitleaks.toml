@@ -1,0 +1,12 @@
+# The development sentinels below are intentionally public and are rejected by the
+# production config validator (SEC-CFG-01), so they are allow-listed here.
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Public development sentinels and CI-only throwaway values"
+regexes = [
+  '''dev-only-jwt-secret-do-not-use-in-production-0123456789''',
+  '''dev-only-32-byte-key-for-aes-256''',
+  '''ci-only-password''',
+]

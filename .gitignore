@@ -1,0 +1,28 @@
+# secrets
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+.coverage
+coverage.xml
+htmlcov/
+.ruff_cache/
+*.db
+*.sqlite3
+
+# node
+node_modules/
+dist/
+coverage/
+
+# misc
+.DS_Store
+*.log
