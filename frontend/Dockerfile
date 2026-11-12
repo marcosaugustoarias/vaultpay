@@ -1,6 +1,6 @@
 # SEC-INF-01: built assets only, served by non-root nginx with a strict CSP (SEC-FE-02).
 # ---- build ----------------------------------------------------------------
-FROM node:22-alpine AS build
+FROM node:25-alpine AS build
 WORKDIR /app
 COPY package.json package-lock.json ./
 RUN npm ci --no-audit --no-fund
